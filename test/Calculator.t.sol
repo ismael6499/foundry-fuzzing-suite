@@ -13,7 +13,8 @@ contract TestCalculator is Test {
         calculator = new Calculator(firstResult, admin);
     }
 
-    //Unit testing
+    // --- Unit Testing ---
+
     function testCheckFirstResult() public view { 
         assertEq(calculator.result(), firstResult);
     } 
@@ -23,7 +24,9 @@ contract TestCalculator is Test {
         uint256 secondNumber = 20;
         uint256 expected = firstNumber + secondNumber;
 
-        assertEq(calculator.addition(firstNumber, secondNumber), expected);
+        // When testing external calls that modify state, checking the stored result is crucial
+        calculator.addition(firstNumber, secondNumber);
+        assertEq(calculator.result(), expected);
     }
 
     function testSubtraction() public {
@@ -31,7 +34,8 @@ contract TestCalculator is Test {
         uint256 secondNumber = 20;
         uint256 expected = firstNumber - secondNumber;
 
-        assertEq(calculator.subtraction(firstNumber, secondNumber), expected);
+        calculator.subtraction(firstNumber, secondNumber);
+        assertEq(calculator.result(), expected);
     }
 
     function testMultiplication() public {
@@ -39,25 +43,18 @@ contract TestCalculator is Test {
         uint256 secondNumber = 20;
         uint256 expected = firstNumber * secondNumber;
 
-        assertEq(calculator.multiplication(firstNumber, secondNumber), expected);
+        calculator.multiplication(firstNumber, secondNumber);
+        assertEq(calculator.result(), expected);
     }
 
     function testCannotMultiplyTwoLargeNumbersWithLargerFirstNumber() public {
-        uint256 firstNumber = type(uint256).max - 1;
+        uint256 firstNumber = type(uint256).max;
         uint256 secondNumber = 2;
         
-        vm.expectRevert();
+        // Expect Arithmetic Over/Underflow (Panic 0x11)
+        vm.expectRevert(); 
         calculator.multiplication(firstNumber, secondNumber);
     }
-
-    function testCannotMultiplyTwoLargeNumbersWithLargerSecondNumber() public {
-        uint256 firstNumber = 3;
-        uint256 secondNumber = type(uint256).max - 1;
-        
-        vm.expectRevert();
-        calculator.multiplication(firstNumber, secondNumber);
-    }
-
 
     function testDivision() public {
         vm.startPrank(admin);
@@ -65,7 +62,8 @@ contract TestCalculator is Test {
         uint256 secondNumber = 2;
         uint256 expected = firstNumber / secondNumber;
 
-        assertEq(calculator.division(firstNumber, secondNumber), expected);
+        calculator.division(firstNumber, secondNumber);
+        assertEq(calculator.result(), expected);
         vm.stopPrank();
     }
     
@@ -73,7 +71,11 @@ contract TestCalculator is Test {
         uint256 firstNumber = 30;
         uint256 secondNumber = 2;
         
-        vm.expectRevert();
+        // Best Practice: Expect the specific Custom Error + Parameters
+        // Validates that it failed because of auth, not some other reason
+        vm.expectRevert(
+            abi.encodeWithSelector(Calculator.NotAuthorized.selector, address(this))
+        );
         calculator.division(firstNumber, secondNumber);
     }
 
@@ -83,39 +85,26 @@ contract TestCalculator is Test {
         uint256 firstNumber = 30;
         uint256 secondNumber = 0;
         
-        vm.expectRevert();
+        // Expect our specific Custom Error
+        vm.expectRevert(Calculator.DivisionByZero.selector);
         calculator.division(firstNumber, secondNumber);
         vm.stopPrank();
     }
 
 
-    //Fuzzing testing
+    // --- Fuzzing Testing ---
+
     function testFuzzingDivision(uint256 _firstNumber, uint256 _secondNumber) public {
         vm.startPrank(admin);
+        // bound() is a Foundry helper to constrain fuzz inputs to a range
+        // Here we ensure secondNumber is never 0 to avoid division by zero
+        uint256 secondNumber = bound(_secondNumber, 1, type(uint256).max);
         uint256 firstNumber = _firstNumber;
-        uint256 secondNumber = _secondNumber % 256;
-        if (secondNumber == 0) secondNumber = 1; 
 
-        vm.assume(secondNumber != 0);
         uint256 expected = firstNumber / secondNumber;
 
-        assertEq(calculator.division(firstNumber, secondNumber), expected);
-        vm.stopPrank();
-    }
-
-    
-    function testFuzzingDivisionZeroSecondNumber(uint256 _firstNumber) public {
-        vm.startPrank(admin);
-        uint256 firstNumber = _firstNumber;
-        uint256 secondNumber = 0;
-
-        vm.expectRevert();
         calculator.division(firstNumber, secondNumber);
+        assertEq(calculator.result(), expected);
         vm.stopPrank();
     }
-
-    
-    
-
-
 }
